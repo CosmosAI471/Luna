@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luna Cosmic Chat</title>
+    <!-- Google Font for Cosmic Theme -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --dark-bg-start: #0f0c29;
+            --dark-bg-mid: #302b63;
+            --dark-bg-end: #24243e;
+            --text-primary: #f0f0f0;
+            --text-secondary: #a0a0c0;
+            --ai-msg-bg: #2c3e50;
+            --user-msg-bg: linear-gradient(to right, #6a11cb, #2575fc);
+            --accent-color: #8e44ad;
+            --accent-hover: #9b59b6;
+            --border-color: #4a4a6a;
+        }
+
+        /* --- Basic Setup --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        html, body {
+            height: 100%;
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--dark-bg-start);
+            background: linear-gradient(to bottom, var(--dark-bg-start), var(--dark-bg-mid), var(--dark-bg-end));
+            color: var(--text-primary);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+        }
+
+        /* --- Main App Container --- */
+        #app-container {
+            width: 100%;
+            max-width: 600px;
+            height: 95vh;
+            max-height: 800px;
+            display: flex;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        /* --- Header --- */
+        #header {
+            padding: 16px;
+            text-align: center;
+            font-size: 1.25rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        /* --- Chat Window --- */
+        #chat-window { 
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .message-container { 
+            display: flex; 
+            width: 100%; 
+        }
+        .message { 
+            padding: 10px 14px; 
+            border-radius: 18px; 
+            line-height: 1.5; 
+            max-width: 80%;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        
+        .user-message-container { justify-content: flex-end; }
+        .user-message { 
+            background: var(--user-msg-bg);
+            color: white; 
+            border-bottom-right-radius: 4px;
+        }
+        
+        .ai-message-container { justify-content: flex-start; }
+        .ai-message { 
+            background: var(--ai-msg-bg);
+            color: var(--text-primary);
+            border-bottom-left-radius: 4px;
+        }
+
+        /* --- Staged File / Download Area --- */
+        #file-status-area {
+            padding: 8px 16px;
+            font-size: 0.85rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+        #staged-file-display {
+            display: none;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #clear-staged-btn {
+            background: none;
+            border: none;
+            color: #ff5555;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+        #download-link {
+            display: block;
+            padding: 4px 0;
+            color: var(--accent-hover);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        #download-link:hover {
+            text-decoration: underline;
+        }
+        
+        /* --- Media Menu --- */
+        #media-menu {
+            display: none;
+            padding: 8px 16px;
+            background: rgba(0, 0, 0, 0.1);
+            border-top: 1px solid var(--border-color);
+            display: none;
+            gap: 10px;
+        }
+        .media-button {
+            flex: 1;
+            padding: 10px;
+            background: var(--ai-msg-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        .media-button:hover {
+            background: #3c5064;
+        }
+
+        /* --- Input Area --- */
+        #input-area { 
+            display: flex;
+            padding: 16px;
+            border-top: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.3);
+            gap: 10px;
+        }
+        .icon-button {
+            flex-shrink: 0;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background: var(--accent-color);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.2s;
+        }
+        .icon-button:hover:not(:disabled) {
+            background: var(--accent-hover);
+            transform: scale(1.05);
+        }
+        .icon-button:disabled {
+            background-color: #5a5a7a;
+            cursor: not-allowed;
+        }
+        .icon-button svg {
+            width: 20px;
+            height: 20px;
+            fill: white;
+        }
+        #mic-button.recording {
+            background: #e74c3c;
+        }
+        #mic-button.recording svg {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        #user-input { 
+            flex-grow: 1; 
+            padding: 10px 14px; 
+            border: 1px solid var(--border-color);
+            border-radius: 22px; 
+            font-size: 1rem;
+            background: #1c1c30;
+            color: var(--text-primary);
+        }
+        #user-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 8px var(--accent-color);
+        }
+
+        /* --- Camera Modal --- */
+        #camera-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 100;
+        }
+        #camera-modal video {
+            width: 90%;
+            max-width: 500px;
+            border-radius: 8px;
+            border: 2px solid var(--accent-color);
+        }
+        #camera-controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+        }
+        #snap-button, #close-camera-button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+        }
+        #snap-button {
+            background: var(--accent-color);
+            color: white;
+        }
+        #close-camera-button {
+            background: #7f8c8d;
+            color: white;
+        }
+        #camera-canvas {
+            display: none; /* Hidden canvas for snapping photos */
+        }
+        
+        /* Hidden file input */
+        #file-uploader {
+            display: none;
+        }
+
+        /* Audio player */
+        #audio-player {
+            display: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        <header id="header">🌙 Luna</header>
+
+        <div id="chat-window">
+            <div class="message-container ai-message-container">
+                <div class="message ai-message">Connecting...</div>
+            </div>
+        </div>
+
+        <div id="file-status-area">
+            <div id="staged-file-display">
+                <span id="staged-file-name"></span>
+                <button id="clear-staged-btn" title="Clear staged file">&times;</button>
+            </div>
+            <div id="download-area">
+                <!-- Download links will be injected here -->
+            </div>
+        </div>
+
+        <div id="media-menu">
+            <button classid="media-button" id="upload-file-button">📎 Upload File</button>
+            <button classid="media-button" id="take-photo-button">📸 Take Photo</button>
+        </div>
+
+        <div id="input-area">
+            <button class="icon-button" id="menu-button" title="Toggle media menu">
+                <svg viewBox="0 0 24 24"><path d="M12 6c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM12 11c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM12 16c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
+            </button>
+            <button class="icon-button" id="mic-button" title="Record audio">
+                <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>
+            </button>
+            <input type="text" id="user-input" placeholder="Type your message..." disabled/>
+            <button class="icon-button" id="send-button" title="Send message" disabled>
+                <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Hidden elements -->
+    <div id="camera-modal">
+        <video id="camera-feed" autoplay playsinline></video>
+        <div id="camera-controls">
+            <button id="snap-button">Snap Photo</button>
+            <button id="close-camera-button">Close</button>
+        </div>
+        <canvas id="camera-canvas"></canvas>
+    </div>
+
+    <input type="file" id="file-uploader" accept="image/*,application/pdf,.doc,.docx,.ppt,.pptx,.txt">
+    <audio id="audio-player" controls></audio>
+    
+    <script type="module">
+        // FIX: Removed LATEST_VERSION as it is not an exported property of the Gradio client module.
+        import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client@latest/dist/index.min.js";
+
+        // --- Config & Endpoints ---
+        const SPACE_ID = "cosmosai471/come_onnn";
+        const CHAT_GENERATOR_ENDPOINT = "/chat_generator";
+        const TRANSCRIBE_AUDIO_ENDPOINT = "/transcribe_audio";
+        // Note: /stage_file_upload is implicitly handled by sending a file to chat_generator
+
+        // --- DOM Elements ---
+        const chatWindow = document.getElementById('chat-window');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const micButton = document.getElementById('mic-button');
+        const menuButton = document.getElementById('menu-button');
+        const mediaMenu = document.getElementById('media-menu');
+        const uploadFileButton = document.getElementById('upload-file-button');
+        const takeButton = document.getElementById('take-photo-button');
+        const fileUploader = document.getElementById('file-uploader');
+        const stagedFileDisplay = document.getElementById('staged-file-display');
+        const stagedFileName = document.getElementById('staged-file-name');
+        const clearStagedButton = document.getElementById('clear-staged-btn');
+        const downloadArea = document.getElementById('download-area');
+        const audioPlayer = document.getElementById('audio-player');
+        
+        // --- Camera Modal Elements ---
+        const cameraModal = document.getElementById('camera-modal');
+        const cameraFeed = document.getElementById('camera-feed');
+        const snapButton = document.getElementById('snap-button');
+        const closeCameraButton = document.getElementById('close-camera-button');
+        const cameraCanvas = document.getElementById('camera-canvas');
+
+        // --- State Variables ---
+        let chatHistory = [];
+        let client;
+        let isVoiceChat = false;
+        let stagedFile = null; // Can be an image or any other file
+        let isRecording = false;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let cameraStream = null;
+
+        // --- Helper: Add Message to UI ---
+        function addMessage(text, sender) {
+            const container = document.createElement('div');
+            container.classList.add('message-container');
+            container.classList.add(sender === 'user' ? 'user-message-container' : 'ai-message-container');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            messageDiv.classList.add(sender === 'user' ? 'user-message' : 'ai-message');
+            messageDiv.textContent = text; 
+
+            container.appendChild(messageDiv);
+            chatWindow.appendChild(container);
+            chatWindow.scrollTop = chatWindow.scrollHeight; 
+            return messageDiv; // Return the element for streaming updates
+        }
+
+        // --- Helper: Show Download Link ---
+        function showDownloadLink(url, filename) {
+            downloadArea.innerHTML = ''; // Clear old links
+            const link = document.createElement('a');
+            link.id = 'download-link';
+            link.href = url;
+            link.textContent = `⬇️ Download ${filename || 'generated file'}`;
+            link.target = '_blank';
+            downloadArea.appendChild(link);
+        }
+
+        // --- Helper: Update Staged File UI ---
+        function updateStagedFileUI(file) {
+            stagedFile = file;
+            if (file) {
+                stagedFileName.textContent = `📎 Staged: ${file.name}`;
+                stagedFileDisplay.style.display = 'flex';
+            } else {
+                stagedFileDisplay.style.display = 'none';
+            }
+        }
+
+        // --- 1. Connect to Gradio ---
+        async function connectClient() {
+            try {
+                // FIX: Removed LATEST_VERSION reference
+                console.log(`Connecting to ${SPACE_ID} with client...`); 
+                client = await Client.connect(SPACE_ID);
+                console.log("Gradio Client Connected!");
+                
+                chatWindow.innerHTML = ''; // Clear "Connecting..."
+                addMessage("✅ Connection successful. Hello! I'm Luna.", 'ai');
+                userInput.disabled = false;
+                sendButton.disabled = false;
+                micButton.disabled = false;
+                menuButton.disabled = false;
+            } catch (e) {
+                console.error("Failed to connect to Gradio Client:", e);
+                addMessage(`❌ Error: Could not connect. Is the Space running? ${e.message}`, 'ai');
+            }
+        }
+
+        // --- 2. Main Chat Logic (Text + File/Image Sending) ---
+        async function sendMessage() {
+            const userMessage = userInput.value.trim();
+            if ((!userMessage && !stagedFile) || !client || userInput.disabled) return;
+
+            // Add user message to UI
+            if (userMessage) {
+                addMessage(userMessage, 'user');
+            } else if (stagedFile) {
+                addMessage(`(Sent file: ${stagedFile.name})`, 'user');
+            }
+            
+            // Prepare file path for API
+            let image_path_or_null = null;
+            if (stagedFile) {
+                try {
+                    // Upload the file and get its server path
+                    const uploadedFile = await client.upload(stagedFile);
+                    image_path_or_null = uploadedFile.path;
+                } catch (e) {
+                    addMessage(`❌ File upload failed: ${e.message}`, 'ai');
+                    return;
+                }
+            }
+            
+            const historyForGenerator = [...chatHistory, 
+                {"role": "user", "content": userMessage || `(Analyzing file: ${stagedFile.name})`},
+                {"role": "assistant", "content": ""}
+            ];
+            
+            // [txt, staged_image, chatbot, stop_signal, is_voice_chat]
+            const inputsArray = [
+                userMessage,        
+                image_path_or_null, 
+                historyForGenerator,
+                false,              
+                isVoiceChat         
+            ];
+
+            // Disable UI
+            userInput.value = '';
+            userInput.disabled = true;
+            sendButton.disabled = true;
+            micButton.disabled = true;
+            updateStagedFileUI(null); // Clear staged file
+            downloadArea.innerHTML = ''; // Clear old downloads
+
+            const aiStreamContainer = addMessage("...", 'ai'); 
+            
+            try {
+                const job = client.submit(CHAT_GENERATOR_ENDPOINT, inputsArray);
+                let finalHistory = [];
+                let audioOutputPath = null;
+                let generatedFile = null;
+
+                for await (const event of job) {
+                    
+                    if (event.type === "data") {
+                        // event.data is the list of 11 outputs
+                        const latestHistory = event.data[0];
+                        const currentAiResponseObject = latestHistory[latestHistory.length - 1];
+                        aiStreamContainer.textContent = currentAiResponseObject.content; 
+                        chatWindow.scrollTop = chatWindow.scrollHeight;
+                    }
+
+                    if (event.type === "complete") {
+                        finalHistory = event.data[0]; 
+                        audioOutputPath = event.data[5];
+                        generatedFile = event.data[10];
+                        chatHistory = finalHistory; // Save final history
+                    }
+
+                    if (event.type === "error") {
+                        throw new Error(event.message);
+                    }
+                }
+
+                // --- Handle Audio and File Outputs ---
+                if (isVoiceChat && audioOutputPath) {
+                    // The client gives a full URL
+                    audioPlayer.src = audioOutputPath.url;
+                    audioPlayer.play();
+                }
+                if (generatedFile) {
+                    showDownloadLink(generatedFile.url, generatedFile.orig_name);
+                }
+
+            } catch (error) {
+                console.error("Chat streaming failed:", error);
+                aiStreamContainer.textContent = `❌ Error: ${error.message}`;
+            } finally {
+                // Re-enable UI (This fixes the "one-time message" bug)
+                userInput.disabled = false;
+                sendButton.disabled = false;
+                micButton.disabled = false;
+                isVoiceChat = false; // Reset voice chat state
+            }
+        }
+
+        // --- 3. Microphone Logic ---
+        async function toggleRecording() {
+            if (isRecording) {
+                // --- STOP RECORDING ---
+                mediaRecorder.stop();
+                isRecording = false;
+                micButton.classList.remove("recording");
+                micButton.title = "Record audio";
+                micButton.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>`;
+                userInput.disabled = false;
+                sendButton.disabled = false;
+            } else {
+                // --- START RECORDING ---
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    audioChunks = [];
+                    mediaRecorder = new MediaRecorder(stream);
+                    
+                    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+                    
+                    mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        const audioFile = new File([audioBlob], "recording.wav", { type: 'audio/wav' });
+                        transcribeAndSend(audioFile);
+                    };
+                    
+                    mediaRecorder.start();
+                    isRecording = true;
+                    micButton.classList.add("recording");
+                    micButton.title = "Stop recording";
+                    micButton.innerHTML = `<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>`; // Stop icon
+                    userInput.disabled = true;
+                    sendButton.disabled = true;
+
+                } catch (e) {
+                    addMessage(`❌ Mic Error: ${e.message}. Please grant permission.`, 'ai');
+                }
+            }
+        }
+
+        async function transcribeAndSend(audioFile) {
+            addMessage("(Transcribing audio...)", 'ai');
+            isVoiceChat = true; // Set flag so we play the response
+            
+            try {
+                const result = await client.predict(TRANSCRIBE_AUDIO_ENDPOINT, [audioFile]);
+                const transcribed_text = result.data[0];
+                
+                if (transcribed_text) {
+                    userInput.value = transcribed_text;
+                    sendMessage(); // Automatically send the text
+                } else {
+                    addMessage("❌ Transcription failed. Couldn't hear anything.", 'ai');
+                    isVoiceChat = false;
+                }
+            } catch (e) {
+                addMessage(`❌ Transcription Error: ${e.message}`, 'ai');
+                isVoiceChat = false;
+            }
+        }
+        
+        // --- 4. Camera & File Menu Logic ---
+        function toggleMenu() {
+            mediaMenu.style.display = mediaMenu.style.display === 'flex' ? 'none' : 'flex';
+        }
+        
+        uploadFileButton.addEventListener('click', () => fileUploader.click());
+        fileUploader.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                updateStagedFileUI(e.target.files[0]);
+                toggleMenu(); // Close menu
+            }
+        });
+        
+        clearStagedButton.addEventListener('click', () => updateStagedFileUI(null));
+
+        // --- 5. Camera Modal Logic ---
+        async function showCameraModal() {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                cameraFeed.srcObject = cameraStream;
+                cameraModal.style.display = 'flex';
+                toggleMenu(); // Close menu
+            } catch (e) {
+                addMessage(`❌ Camera Error: ${e.message}. Please grant permission.`, 'ai');
+            }
+        }
+
+        function hideCameraModal() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+            }
+            cameraModal.style.display = 'none';
+        }
+
+        function snapPhoto() {
+            const context = cameraCanvas.getContext('2d');
+            cameraCanvas.width = cameraFeed.videoWidth;
+            cameraCanvas.height = cameraFeed.videoHeight;
+            context.drawImage(cameraFeed, 0, 0, cameraCanvas.width, cameraCanvas.height);
+            
+            cameraCanvas.toBlob((blob) => {
+                const photoFile = new File([blob], "photo.png", { type: "image/png" });
+                updateStagedFileUI(photoFile);
+                hideCameraModal();
+            }, 'image/png');
+        }
+
+        // --- Event Listeners ---
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault(); // Prevent newline in textarea
+                sendMessage();
+            }
+        });
+        
+        micButton.addEventListener('click', toggleRecording);
+        menuButton.addEventListener('click', toggleMenu);
+        takeButton.addEventListener('click', showCameraModal);
+        snapButton.addEventListener('click', snapPhoto);
+        closeCameraButton.addEventListener('click', hideCameraModal);
+        
+        // --- Start Application ---
+        connectClient();
+    </script>
+</body>
+</html>
