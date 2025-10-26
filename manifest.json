@@ -1,0 +1,31 @@
+{
+  "name": "Prototype",
+  "short_name": "Mark-1",
+  "description": "Hope is Everything",
+  "icons": [
+    {
+      "src": "Fevicon/192x192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "Fevicon/180x180.png",
+      "type": "image/png",
+      "sizes": "180x180"
+    },
+    {
+      "src": "Fevicon/32x32.png",
+      "type": "image/png",
+      "sizes": "32x32"
+    },
+    {
+      "src": "Fevicon/16x16.png",
+      "type": "image/png",
+      "sizes": "16x16"
+    }
+  ],
+  "start_url": "index.html",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "theme_color": "#007991"
+}
