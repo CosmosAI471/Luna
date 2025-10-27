@@ -1,24 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="apple-touch-icon" sizes="180x180" href="/Fevicon/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/Fevicon/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/Fevicon/favicon-16x16.png">
-    <link rel="manifest" href="manifest.json">
-    <link rel="manifest" href="/Fevicon/site.webmanifest">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Luna</title>
     <!-- Google Font for Cosmic Theme -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
+    <!-- Firebase Imports for Authentication and Firestore -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Added increment, getDocs, writeBatch, deleteDoc
+        import { getFirestore, doc, addDoc, setDoc, updateDoc, onSnapshot, collection, query, serverTimestamp, setLogLevel, increment, getDocs, writeBatch, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Expose Firebase objects globally for use in the main script block
+        window.firebase = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, 
+            createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
+            getFirestore, doc, addDoc, setDoc, updateDoc, onSnapshot, collection, query, serverTimestamp, setLogLevel,
+            increment, getDocs, writeBatch, deleteDoc // Added new functions
+        };
+        window.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    </script>
+
     <style>
         :root {
-            --dark-bg-start: #0f0c29;
-            --dark-bg-mid: #302b63;
-            --dark-bg-end: #24243e;
+            --dark-bg-start: #0f0c29; /* Deep Purple */
+            --dark-bg-mid: #302b63;   /* Mid Purple */
+            --dark-bg-end: #24243e;   /* Darker Purple */
             --text-primary: #f0f0f0;
             --text-secondary: #a0a0c0;
             --ai-msg-bg: #2c3e50;
@@ -26,158 +38,354 @@
             --accent-color: #8e44ad;
             --accent-hover: #9b59b6;
             --border-color: #4a4a6a;
+            --sidebar-width: 280px;
         }
 
-        /* --- Basic Setup --- */
+        /* --- Global Setup --- */
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
+            font-family: 'Inter', sans-serif;
         }
         html, body {
             height: 100%;
+            overflow: hidden;
         }
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: var(--dark-bg-start);
             background: linear-gradient(to bottom, var(--dark-bg-start), var(--dark-bg-mid), var(--dark-bg-end));
             color: var(--text-primary);
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 16px;
         }
 
-        /* --- Main App Container --- */
-        #app-container {
+        /* --- Utility Classes --- */
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid var(--accent-hover);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* --- Full-Screen Wrapper for Chat App --- */
+        #app-root {
             width: 100%;
-            max-width: 600px;
-            height: 100%;
-            max-height: 800px;
+            height: 100vh; 
             display: flex;
-            flex-direction: column;
             background: rgba(0, 0, 0, 0.2);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-        }
-
-        /* --- Header --- */
-        #header {
-            padding: 16px;
-            text-align: center;
-            font-size: 1.25rem;
-            font-weight: 600;
-            border-bottom: 1px solid var(--border-color);
-            background: rgba(0, 0, 0, 0.2);
-        }
-
-        /* --- Chat Window --- */
-        #chat-window { 
-            flex-grow: 1;
-            overflow-y: auto;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .message-container { 
-            display: flex; 
-            width: 100%; 
-        }
-        .message { 
-            padding: 10px 14px; 
-            border-radius: 18px; 
-            line-height: 1.5; 
-            max-width: 80%;
-            word-wrap: break-word;
-            white-space: pre-wrap;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            position: relative; /* Added for backdrop positioning */
         }
         
+        #sidebar-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 49;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        #sidebar-backdrop.open {
+            display: block;
+            opacity: 1;
+        }
+
+        /* --- LANDING / AUTH View Styles --- */
+        #landing-view, #auth-view {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 20px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        .auth-card {
+            background: rgba(48, 43, 99, 0.8); /* var(--dark-bg-mid) with opacity */
+            padding: 40px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            max-width: 400px;
+            width: 100%;
+        }
+        .auth-card h2 { margin-bottom: 25px; font-size: 1.8rem; color: var(--text-primary); }
+        .auth-card input {
+            width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px;
+            border: 1px solid var(--border-color); background: #1c1c30;
+            color: var(--text-primary); font-size: 1rem;
+        }
+        .auth-card button {
+            width: 100%; padding: 12px; margin-top: 10px; border: none;
+            border-radius: 8px; font-size: 1.1rem; font-weight: 600;
+            cursor: pointer; transition: background 0.2s;
+        }
+        #start-chat-btn, #login-btn, #signup-btn {
+            background: var(--accent-color); color: white;
+        }
+        #start-chat-btn:hover, #login-btn:hover, #signup-btn:hover {
+            background: var(--accent-hover);
+        }
+        #toggle-auth-btn {
+            background: none; color: var(--text-secondary);
+            font-size: 0.9rem; margin-top: 20px;
+        }
+        .error-message {
+            color: #ff6b6b; font-size: 0.9rem; margin-bottom: 15px;
+        }
+
+        /* --- CHAT View Styles --- */
+        
+        #chat-app-wrapper {
+            width: 100%;
+            height: 100vh; 
+            display: flex;
+        }
+
+        /* Sidebar (Conversations List) */
+        #sidebar {
+            width: var(--sidebar-width);
+            flex-shrink: 0;
+            background: rgba(0, 0, 0, 0.3);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            transform: translateX(0);
+            transition: transform 0.3s ease-in-out;
+            position: relative; 
+        }
+        #sidebar-header {
+            padding: 16px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        #sidebar-button-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        #new-chat-btn {
+            padding: 8px 10px;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 0.9rem;
+        }
+        #new-chat-btn:hover { background: var(--accent-hover); }
+
+        #sidebar-close-btn {
+            font-size: 1.8rem;
+            line-height: 1;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: none; /* Hidden by default, shown on mobile */
+        }
+        #sidebar-close-btn:hover {
+            color: var(--text-primary);
+        }
+
+        #conversation-list { flex-grow: 1; overflow-y: auto; }
+        
+        /* Convo Item Styling (New) */
+        .convo-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px; 
+            cursor: pointer; 
+            border-bottom: 1px solid #1c1c30;
+            transition: background-color 0.2s;
+        }
+        .convo-item-title {
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-grow: 1;
+        }
+        .convo-item.active { 
+            background-color: var(--accent-color); 
+        }
+        .convo-item.active .convo-item-title {
+            font-weight: 600;
+        }
+        /* Actions for rename/delete */
+        .convo-item-actions {
+            display: flex;
+            gap: 8px;
+            visibility: hidden; /* Hide by default */
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .convo-item:hover .convo-item-actions {
+            visibility: visible;
+            opacity: 1;
+        }
+        .convo-item.active .convo-item-actions {
+            visibility: visible;
+            opacity: 1;
+        }
+        .convo-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .convo-btn:hover {
+            color: var(--text-primary);
+        }
+        .rename-input {
+            width: 100%;
+            background: #1c1c30;
+            border: 1px solid var(--accent-hover);
+            color: white;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        #sidebar-footer {
+             padding: 10px; 
+             font-size: 0.75rem; 
+             border-top: 1px solid var(--border-color); 
+             color: var(--text-secondary);
+        }
+        #sidebar-footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        #logout-btn {
+            background: #e74c3c; color: white; padding: 4px 8px;
+            border-radius: 6px; border: none; cursor: pointer; font-size: 0.75rem;
+        }
+        /* Quota Bar */
+        #quota-bar-container {
+            width: 100%;
+            background: #1c1c30;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        #quota-bar-fill {
+            width: 0%; /* Updated by JS */
+            height: 100%;
+            background: var(--user-msg-bg);
+            transition: width 0.5s;
+        }
+        #quota-text {
+            font-size: 0.7rem;
+            text-align: center;
+            margin-top: 4px;
+        }
+
+        /* Main Chat Area */
+        #chat-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        
+        /* Header */
+        #chat-header {
+            padding: 16px; font-size: 1.1rem; font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.2); display: flex;
+            justify-content: flex-start; align-items: center;
+        }
+        #menu-toggle-btn {
+            background: none; border: none; color: var(--text-primary);
+            font-size: 1.5rem; cursor: pointer;
+            margin-right: 15px; display: none; /* Default hidden on desktop */
+        }
+        #chat-header-title { flex-grow: 1; }
+
+        /* Chat Window & Messages */
+        #chat-window { 
+            flex-grow: 1; overflow-y: auto; padding: 16px;
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .message-container { display: flex; width: 100%; }
+        .message { 
+            padding: 10px 14px; border-radius: 18px; line-height: 1.5; 
+            max-width: 85%; word-wrap: break-word; white-space: pre-wrap;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
         .user-message-container { justify-content: flex-end; }
         .user-message { 
-            background: var(--user-msg-bg);
-            color: white; 
+            background: var(--user-msg-bg); color: white; 
             border-bottom-right-radius: 4px;
         }
-        
         .ai-message-container { justify-content: flex-start; }
         .ai-message { 
-            background: var(--ai-msg-bg);
-            color: var(--text-primary);
+            background: var(--ai-msg-bg); color: var(--text-primary);
             border-bottom-left-radius: 4px;
         }
 
-        /* --- Staged File / Download Area --- */
+        /* Staged File / Download Area */
         #file-status-area {
-            padding: 8px 16px;
-            font-size: 0.85rem;
-            background: rgba(0, 0, 0, 0.3);
-            border-top: 1px solid var(--border-color);
+            padding: 8px 16px; font-size: 0.85rem;
+            background: rgba(0, 0, 0, 0.3); border-top: 1px solid var(--border-color);
             color: var(--text-secondary);
         }
-        #staged-file-display {
-            display: none;
-            justify-content: space-between;
-            align-items: center;
-        }
+        #staged-file-display { display: none; justify-content: space-between; align-items: center; }
         #clear-staged-btn {
-            background: none;
-            border: none;
-            color: #ff5555;
-            font-size: 1.2rem;
-            cursor: pointer;
+            background: none; border: none; color: #ff5555;
+            font-size: 1.2rem; cursor: pointer;
         }
         #download-link {
-            display: block;
-            padding: 4px 0;
-            color: var(--accent-hover);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        #download-link:hover {
-            text-decoration: underline;
+            display: block; padding: 4px 0; color: var(--accent-hover);
+            text-decoration: none; font-weight: 500;
         }
         
-        /* --- Media Menu --- */
+        /* Media Menu */
         #media-menu {
-            display: none;
-            padding: 8px 16px;
-            background: rgba(0, 0, 0, 0.1);
-            border-top: 1px solid var(--border-color);
-            display: none;
-            gap: 10px;
+            display: none; padding: 8px 16px; background: rgba(0, 0, 0, 0.1);
+            border-top: 1px solid var(--border-color); gap: 10px;
         }
         .media-button {
-            flex: 1;
-            padding: 10px;
-            background: var(--ai-msg-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            color: var(--text-primary);
-            cursor: pointer;
-            font-size: 0.9rem;
-            text-align: center;
-        }
-        .media-button:hover {
-            background: #3c5064;
+            flex: 1; padding: 10px; background: var(--ai-msg-bg);
+            border: 1px solid var(--border-color); border-radius: 8px;
+            color: var(--text-primary); cursor: pointer; font-size: 0.9rem; text-align: center;
         }
 
-        /* --- Input Area --- */
+        /* Input Area */
         #input-area { 
             display: flex;
-            padding: 12px;
+            padding: 8px 12px; /* Reduced padding */
             border-top: 1px solid var(--border-color);
             background: rgba(0, 0, 0, 0.3);
-            gap: 10px;
+            gap: 6px; /* Reduced gap */
+            align-items: center;
         }
         .icon-button {
-            flex-shrink: 0;
-            width: 44px;
-            height: 44px;
+            flex-shrink: 0; 
+            width: 40px; 
+            height: 40px;
             border-radius: 50%;
             border: none;
             background: var(--accent-color);
@@ -188,143 +396,88 @@
             cursor: pointer;
             transition: background-color 0.2s, transform 0.2s;
         }
-        .icon-button:hover:not(:disabled) {
-            background: var(--accent-hover);
-            transform: scale(1.05);
-        }
-        .icon-button:disabled {
-            background-color: #5a5a7a;
-            cursor: not-allowed;
-        }
-        .icon-button svg {
-            width: 20px;
-            height: 20px;
-            fill: white;
-        }
-        #mic-button.recording {
-            background: #e74c3c;
-        }
-        #mic-button.recording svg {
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
-        }
-
+        .icon-button svg { width: 20px; height: 20px; fill: white; }
+        
         #user-input { 
             flex-grow: 1; 
+            flex-shrink: 1; 
+            min-width: 0; 
             padding: 10px 14px; 
             border: 1px solid var(--border-color);
-            border-radius: 22px; 
+            border-radius: 20px; 
             font-size: 1rem;
             background: #1c1c30;
             color: var(--text-primary);
         }
-        #user-input:focus {
-            outline: none;
-            border-color: var(--accent-color);
-            box-shadow: 0 0 8px var(--accent-color);
-        }
 
-        /* --- Camera Modal --- */
-        #camera-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            z-index: 100;
-        }
-        #camera-modal video {
-            width: 90%;
-            max-width: 500px;
-            border-radius: 8px;
-            border: 2px solid var(--accent-color);
-        }
-        #camera-controls {
-            margin-top: 20px;
-            display: flex;
-            gap: 20px;
-        }
-        #snap-button, #close-camera-button {
-            padding: 12px 24px;
-            font-size: 1rem;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-        }
-        #snap-button {
-            background: var(--accent-color);
-            color: white;
-        }
-        #close-camera-button {
-            background: #7f8c8d;
-            color: white;
-        }
-        #camera-canvas {
-            display: none; /* Hidden canvas for snapping photos */
+        /* --- Media Queries for Mobile Responsiveness --- */
+        @media (max-width: 768px) {
+            #app-root { height: 100%; box-shadow: none; }
+            #sidebar {
+                position: fixed; 
+                height: 100%;
+                z-index: 50;
+                transform: translateX(-100%);
+                box-shadow: 4px 0 10px rgba(0, 0, 0, 0.5);
+            }
+            #sidebar.open {
+                transform: translateX(0);
+            }
+            #menu-toggle-btn {
+                display: block;
+            }
+            #sidebar-close-btn {
+                display: block !important;
+            }
+            #chat-header-title {
+                text-align: center;
+                flex-grow: 1;
+            }
+            .icon-button {
+                width: 38px;
+                height: 38px;
+            }
+            .icon-button svg { width: 18px; height: 18px; }
         }
         
+        /* --- Camera Modal (Same as before) --- */
+        #camera-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8); justify-content: center; align-items: center;
+            flex-direction: column; z-index: 100;
+        }
+        #camera-modal video {
+            width: 90%; max-width: 500px; border-radius: 8px; border: 2px solid var(--accent-color);
+        }
+        #camera-controls { margin-top: 20px; display: flex; gap: 20px; }
+        #snap-button, #close-camera-button {
+            padding: 12px 24px; font-size: 1rem; border-radius: 8px;
+            border: none; cursor: pointer;
+        }
+        #snap-button { background: var(--accent-color); color: white; }
+        #close-camera-button { background: #7f8c8d; color: white; }
+        #camera-canvas { display: none; }
+        
         /* Hidden file input */
-        #file-uploader {
-            display: none;
-        }
-
-        /* Audio player */
-        #audio-player {
-            display: none;
-        }
-
+        #file-uploader { display: none; }
+        #audio-player { display: none; }
+        
     </style>
 </head>
 <body>
 
-    <div id="app-container">
-        <header id="header">🌙 Luna</header>
+    <!-- Backdrop Added Here -->
+    <div id="sidebar-backdrop"></div>
 
-        <div id="chat-window">
-            <div class="message-container ai-message-container">
-                <div class="message ai-message">Connecting...</div>
-            </div>
-        </div>
-
-        <div id="file-status-area">
-            <div id="staged-file-display">
-                <span id="staged-file-name"></span>
-                <button id="clear-staged-btn" title="Clear staged file">&times;</button>
-            </div>
-            <div id="download-area">
-                <!-- Download links will be injected here -->
-            </div>
-        </div>
-
-        <div id="media-menu">
-            <button classid="media-button" id="upload-file-button">📎 Upload File</button>
-            <button classid="media-button" id="take-photo-button">📸 Take Photo</button>
-        </div>
-
-        <div id="input-area">
-            <button class="icon-button" id="menu-button" title="Toggle media menu">
-                <svg viewBox="0 0 24 24"><path d="M12 6c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM12 11c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM12 16c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
-            </button>
-            <button class="icon-button" id="mic-button" title="Record audio">
-                <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>
-            </button>
-            <input type="text" id="user-input" placeholder="Type your message..." disabled/>
-            <button class="icon-button" id="send-button" title="Send message" disabled>
-                <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-            </button>
+    <div id="app-root">
+        <!-- Content dynamically injected here based on appState -->
+        <div id="loading-view" style="width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            <div class="loading-spinner"></div>
+            <p style="margin-top: 15px;">Initializing Firebase and Checking Auth...</p>
         </div>
     </div>
 
-    <!-- Hidden elements -->
+    <!-- Hidden elements (Modals and Inputs) -->
     <div id="camera-modal">
         <video id="camera-feed" autoplay playsinline></video>
         <div id="camera-controls">
@@ -338,49 +491,418 @@
     <audio id="audio-player" controls></audio>
     
     <script type="module">
-        // FIX: Removed LATEST_VERSION as it is not an exported property of the Gradio client module.
         import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client@latest/dist/index.min.js";
+        
+        // --- 0. Firebase and Global Config ---
+        const { 
+            initializeApp, getAuth, onAuthStateChanged, 
+            createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
+            getFirestore, doc, addDoc, setDoc, updateDoc, onSnapshot, collection, query, serverTimestamp,
+            increment, getDocs, writeBatch, deleteDoc // Added functions
+        } = window.firebase;
+        const appId = window.appId;
 
-        // --- Config & Endpoints ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBw2zk_4_qNqMCy8FrEALX_MZ5qOCu0vSE",
+            authDomain: "luna-588ba.firebaseapp.com",
+            projectId: "luna-588ba",
+            storageBucket: "luna-588ba.firebasestorage.app",
+            messagingSenderId: "694784257459",
+            appId: "1:694784257459:web:eaab24336174766c7cafc6",
+            measurementId: "G-QC1M835FZ9"
+        };
+        
         const SPACE_ID = "cosmosai471/come_onnn";
         const CHAT_GENERATOR_ENDPOINT = "/chat_generator";
         const TRANSCRIBE_AUDIO_ENDPOINT = "/transcribe_audio";
-        // Note: /stage_file_upload is implicitly handled by sending a file to chat_generator
-
-        // --- DOM Elements ---
-        const chatWindow = document.getElementById('chat-window');
-        const userInput = document.getElementById('user-input');
-        const sendButton = document.getElementById('send-button');
-        const micButton = document.getElementById('mic-button');
-        const menuButton = document.getElementById('menu-button');
-        const mediaMenu = document.getElementById('media-menu');
-        const uploadFileButton = document.getElementById('upload-file-button');
-        const takeButton = document.getElementById('take-photo-button');
-        const fileUploader = document.getElementById('file-uploader');
-        const stagedFileDisplay = document.getElementById('staged-file-display');
-        const stagedFileName = document.getElementById('staged-file-name');
-        const clearStagedButton = document.getElementById('clear-staged-btn');
-        const downloadArea = document.getElementById('download-area');
-        const audioPlayer = document.getElementById('audio-player');
         
-        // --- Camera Modal Elements ---
-        const cameraModal = document.getElementById('camera-modal');
-        const cameraFeed = document.getElementById('camera-feed');
-        const snapButton = document.getElementById('snap-button');
-        const closeCameraButton = document.getElementById('close-camera-button');
-        const cameraCanvas = document.getElementById('camera-canvas');
-
-        // --- State Variables ---
-        let chatHistory = [];
+        // --- Global State ---
+        let appState = 'LOADING';
+        let db, auth;
+        let userId = null;
         let client;
+
+        // Chat specific state
+        let activeConversationId = null;
+        let currentGradioHistory = []; // Local cache representing Firestore messages for Gradio
+        let conversationUnsubscribe = null;
+        let messagesUnsubscribe = null;
+        let stagedFile = null;
         let isVoiceChat = false;
-        let stagedFile = null; // Can be an image or any other file
         let isRecording = false;
         let mediaRecorder = null;
         let audioChunks = [];
         let cameraStream = null;
+        
+        // Quota State
+        let userQuota = { messageCount: 0, limit: 5000 };
+        let quotaUnsubscribe = null;
 
-        // --- Helper: Add Message to UI ---
+        const appRoot = document.getElementById('app-root');
+        const backdrop = document.getElementById('sidebar-backdrop');
+
+        // --- View Rendering ---
+
+        function renderApp() {
+            appRoot.innerHTML = '';
+            if (appState === 'LANDING') {
+                renderLandingPage();
+            } else if (appState === 'AUTH') {
+                renderAuthPage('login');
+            } else if (appState === 'CHAT') {
+                renderChatApp();
+            } else if (appState === 'LOADING') {
+                appRoot.innerHTML = `
+                    <div id="loading-view" style="width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                        <div class="loading-spinner"></div>
+                        <p style="margin-top: 15px;">Initializing Firebase...</p>
+                    </div>`;
+            }
+        }
+
+        function renderLandingPage() {
+            appRoot.innerHTML = `
+                <div id="landing-view">
+                    <div class="auth-card">
+                        <h2 style="color: #ffcc00;">Welcome to Luna 🌙</h2>
+                        <p style="margin-bottom: 25px; color: var(--text-secondary);">
+                            Your personal AI assistant, ready to chat, analyze files, and answer cosmic questions.
+                        </p>
+                        <button id="start-chat-btn">Chat for Free</button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('start-chat-btn').onclick = () => {
+                appState = 'AUTH';
+                renderApp();
+            };
+        }
+
+        function renderAuthPage(mode = 'login', errorMessage = '') {
+            appRoot.innerHTML = `
+                <div id="auth-view">
+                    <div class="auth-card">
+                        <h2>${mode === 'login' ? 'Log In' : 'Sign Up'}</h2>
+                        ${errorMessage ? `<p class="error-message">${errorMessage}</p>` : ''}
+                        <input type="email" id="auth-email" placeholder="Email Address" required>
+                        <input type="password" id="auth-password" placeholder="Password" required>
+                        <button id="${mode}-btn">${mode === 'login' ? 'Log In' : 'Sign Up'}</button>
+                        <button id="toggle-auth-btn">
+                            ${mode === 'login' ? 'Need an account? Sign Up' : 'Already have an account? Log In'}
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            const emailInput = document.getElementById('auth-email');
+            const passwordInput = document.getElementById('auth-password');
+            const actionButton = document.getElementById(`${mode}-btn`);
+            const toggleButton = document.getElementById('toggle-auth-btn');
+
+            const handleAuth = async () => {
+                const email = emailInput.value.trim();
+                const password = passwordInput.value.trim();
+                if (!email || !password) {
+                    renderAuthPage(mode, 'Email and password are required.');
+                    return;
+                }
+                
+                actionButton.disabled = true;
+                actionButton.textContent = 'Loading...';
+                try {
+                    if (mode === 'login') {
+                        await signInWithEmailAndPassword(auth, email, password);
+                    } else {
+                        await createUserWithEmailAndPassword(auth, email, password);
+                    }
+                } catch (error) {
+                    let msg = 'An unknown error occurred.';
+                    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                        msg = 'Invalid email or password.';
+                    } else if (error.code === 'auth/email-already-in-use') {
+                        msg = 'This email is already registered.';
+                    } else if (error.code === 'auth/weak-password') {
+                        msg = 'Password should be at least 6 characters.';
+                    } else if (error.code === 'auth/configuration-not-found') {
+                        msg = 'Authentication not configured. Please contact support.';
+                        console.error("Firebase Error: Email/Password sign-in is likely disabled in the Firebase console.");
+                    } else {
+                        console.error("Auth error:", error);
+                        msg = error.message;
+                    }
+                    renderAuthPage(mode, msg);
+                } 
+            };
+
+            actionButton.onclick = handleAuth;
+            toggleButton.onclick = () => renderAuthPage(mode === 'login' ? 'signup' : 'login');
+        }
+
+        function renderChatApp() {
+            appRoot.innerHTML = `
+                <div id="chat-app-wrapper">
+                    <aside id="sidebar">
+                        <div id="sidebar-header">
+                            <span>Conversations</span>
+                            <div id="sidebar-button-container">
+                                <button id="new-chat-btn" title="New Chat">➕</button>
+                                <button id="sidebar-close-btn" title="Close Menu">×</button>
+                            </div>
+                        </div>
+                        <div id="conversation-list">
+                            <div class="convo-item">Loading...</div>
+                        </div>
+                        <div id="sidebar-footer">
+                            <div id="sidebar-footer-content">
+                                <span>User: <span id="user-id-display">...</span></span>
+                                <button id="logout-btn">Logout</button>
+                            </div>
+                            <div id="quota-bar-container">
+                                <div id="quota-bar-fill"></div>
+                            </div>
+                            <div id="quota-text">Quota: 0 / 5000</div>
+                        </div>
+                    </aside>
+
+                    <div id="chat-container">
+                        <header id="chat-header">
+                            <button id="menu-toggle-btn">☰</button>
+                            <span id="chat-header-title">🌙 Loading Chats...</span>
+                            <span style="visibility: hidden;">Logout</span>
+                        </header>
+
+                        <div id="chat-window">
+                            <div class="message-container ai-message-container">
+                                <div class="message ai-message">Connecting to Gradio...</div>
+                            </div>
+                        </div>
+
+                        <div id="file-status-area">
+                            <div id="staged-file-display">
+                                <span id="staged-file-name"></span>
+                                <button id="clear-staged-btn" title="Clear staged file">&times;</button>
+                            </div>
+                            <div id="download-area"></div>
+                        </div>
+
+                        <div id="media-menu">
+                            <button class="media-button" id="upload-file-button">📎 Upload File</button>
+                            <button class="media-button" id="take-photo-button">📸 Take Photo</button>
+                        </div>
+
+                        <div id="input-area">
+                            <button class="icon-button" id="menu-button" title="Toggle media menu">
+                                <svg viewBox="0 0 24 24"><path d="M12 6c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM12 11c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM12 16c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
+                            </button>
+                            <button class="icon-button" id="mic-button" title="Record audio">
+                                <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>
+                            </button>
+                            <input type="text" id="user-input" placeholder="Type your message..." disabled/>
+                            <button class="icon-button" id="send-button" title="Send message" disabled>
+                                <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            initializeDOMElementsAndListeners();
+            connectGradioClient(); 
+            subscribeToConversations();
+            subscribeToQuota(); // Subscribe to quota changes
+        }
+
+        // --- Core Firebase Initialization and Auth Guard ---
+        async function firebaseInit() {
+            if (Object.keys(firebaseConfig).length === 0) {
+                console.error("Firebase config missing. Cannot run app.");
+                appRoot.innerHTML = '<div id="auth-view" style="color: #ff6b6b;">Error: Firebase configuration is missing.</div>';
+                return;
+            }
+            
+            console.log("Initializing Firebase with config:", firebaseConfig);
+            
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    appState = 'CHAT';
+                    renderApp(); // Renders chat app if authenticated
+                } else {
+                    userId = null;
+                    appState = 'LANDING';
+                    renderApp();
+                    
+                    if (conversationUnsubscribe) conversationUnsubscribe();
+                    if (messagesUnsubscribe) messagesUnsubscribe();
+                    if (quotaUnsubscribe) quotaUnsubscribe(); // Clean up quota listener
+                }
+            });
+        }
+        
+        // --- Helper: Custom Alert/Confirmation Modal ---
+        function alertMessage(message, title = "Notification", showCancel = false, onConfirm = null) {
+            const modalId = 'message-modal';
+            let modal = document.getElementById(modalId);
+            
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = modalId;
+                modal.style = `
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); 
+                    display: flex; justify-content: center; align-items: center; z-index: 200;
+                    opacity: 0; transition: opacity 0.2s;
+                `;
+                modal.innerHTML = `
+                    <div style="background: var(--ai-msg-bg); padding: 25px; border-radius: 12px; max-width: 350px; width: 90%; 
+                                box-shadow: 0 5px 15px rgba(0,0,0,0.5); color: var(--text-primary);
+                                transform: scale(0.9); transition: transform 0.2s;">
+                        <h4 id="modal-title" style="margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;"></h4>
+                        <p id="modal-content"></p>
+                        <div id="modal-buttons" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                            <button id="modal-cancel" style="padding: 8px 15px; background: #555; 
+                                                            color: white; border: none; border-radius: 6px; cursor: pointer;">Cancel</button>
+                            <button id="modal-ok" style="padding: 8px 15px; background: var(--accent-color); 
+                                                        color: white; border: none; border-radius: 6px; cursor: pointer;">OK</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+            
+            modal.querySelector('#modal-title').textContent = title;
+            modal.querySelector('#modal-content').textContent = message;
+            
+            const okButton = modal.querySelector('#modal-ok');
+            const cancelButton = modal.querySelector('#modal-cancel');
+            
+            cancelButton.style.display = showCancel ? 'block' : 'none';
+            
+            const close = () => {
+                modal.style.opacity = '0';
+                modal.querySelector('div').style.transform = 'scale(0.9)';
+                setTimeout(() => modal.style.display = 'none', 200);
+            };
+
+            okButton.onclick = () => {
+                if (onConfirm) onConfirm();
+                close();
+            };
+            cancelButton.onclick = close;
+
+            modal.style.display = 'flex';
+            setTimeout(() => {
+                modal.style.opacity = '1';
+                modal.querySelector('div').style.transform = 'scale(1)';
+            }, 10);
+        }
+
+        // --- CHAT APP Logic ---
+
+        let chatWindow, userInput, sendButton, micButton, menuButton, mediaMenu, sidebar, 
+            uploadFileButton, takeButton, fileUploader, stagedFileDisplay, stagedFileName, 
+            clearStagedButton, downloadArea, audioPlayer, conversationList, newChatButton, 
+            chatHeaderTitle, userIdDisplay, menuToggleButton, logoutButton, sidebarCloseButton,
+            quotaBarFill, quotaText;
+
+        function initializeDOMElementsAndListeners() {
+            // Map elements
+            sidebar = document.getElementById('sidebar');
+            menuToggleButton = document.getElementById('menu-toggle-btn');
+            chatWindow = document.getElementById('chat-window');
+            userInput = document.getElementById('user-input');
+            sendButton = document.getElementById('send-button');
+            micButton = document.getElementById('mic-button');
+            menuButton = document.getElementById('menu-button');
+            mediaMenu = document.getElementById('media-menu');
+            uploadFileButton = document.getElementById('upload-file-button');
+            takeButton = document.getElementById('take-photo-button');
+            fileUploader = document.getElementById('file-uploader');
+            stagedFileDisplay = document.getElementById('staged-file-display');
+            stagedFileName = document.getElementById('staged-file-name');
+            clearStagedButton = document.getElementById('clear-staged-btn');
+            downloadArea = document.getElementById('download-area');
+            audioPlayer = document.getElementById('audio-player');
+            conversationList = document.getElementById('conversation-list');
+            newChatButton = document.getElementById('new-chat-btn');
+            chatHeaderTitle = document.getElementById('chat-header-title');
+            userIdDisplay = document.getElementById('user-id-display');
+            logoutButton = document.getElementById('logout-btn');
+            sidebarCloseButton = document.getElementById('sidebar-close-btn');
+            quotaBarFill = document.getElementById('quota-bar-fill');
+            quotaText = document.getElementById('quota-text');
+
+            // --- Event Listeners ---
+            sendButton.addEventListener('click', sendMessage);
+            userInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !userInput.disabled) {
+                    e.preventDefault(); 
+                    sendMessage();
+                }
+            });
+            micButton.addEventListener('click', toggleRecording);
+            menuButton.addEventListener('click', toggleMenu);
+            uploadFileButton.addEventListener('click', () => fileUploader.click());
+            takeButton.addEventListener('click', showCameraModal);
+            fileUploader.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    updateStagedFileUI(e.target.files[0]);
+                    toggleMenu();
+                }
+            });
+            clearStagedButton.addEventListener('click', () => updateStagedFileUI(null));
+            newChatButton.addEventListener('click', createNewConversation);
+            
+            menuToggleButton.addEventListener('click', () => {
+                sidebar.classList.add('open');
+                backdrop.classList.add('open');
+            });
+            sidebarCloseButton.addEventListener('click', () => {
+                sidebar.classList.remove('open');
+                backdrop.classList.remove('open');
+            });
+            backdrop.addEventListener('click', () => {
+                sidebar.classList.remove('open');
+                backdrop.classList.remove('open');
+            });
+
+            logoutButton.addEventListener('click', async () => {
+                if (conversationUnsubscribe) conversationUnsubscribe();
+                if (messagesUnsubscribe) messagesUnsubscribe();
+                if (quotaUnsubscribe) quotaUnsubscribe();
+                await signOut(auth);
+            });
+            
+            // Camera modal listeners
+            const cameraModal = document.getElementById('camera-modal');
+            const snapButton = document.getElementById('snap-button');
+            const closeCameraButton = document.getElementById('close-camera-button');
+            snapButton.onclick = snapPhoto;
+            closeCameraButton.onclick = hideCameraModal;
+
+            userIdDisplay.textContent = userId.substring(0, 8) + '...';
+            
+            // Event delegation for rename/delete
+            conversationList.addEventListener('click', (e) => {
+                const renameBtn = e.target.closest('.rename-btn');
+                const deleteBtn = e.target.closest('.delete-btn');
+                const convoItem = e.target.closest('.convo-item');
+
+                if (renameBtn) {
+                    handleRename(renameBtn);
+                } else if (deleteBtn) {
+                    handleDelete(deleteBtn);
+                } else if (convoItem && !e.target.closest('.convo-item-actions')) {
+                    // Only switch if not clicking a button
+                    switchToConversation(convoItem.dataset.convId);
+                }
+            });
+        }
+
+        // --- Chat UI Helpers ---
         function addMessage(text, sender) {
             const container = document.createElement('div');
             container.classList.add('message-container');
@@ -393,22 +915,13 @@
 
             container.appendChild(messageDiv);
             chatWindow.appendChild(container);
-            chatWindow.scrollTop = chatWindow.scrollHeight; 
-            return messageDiv; // Return the element for streaming updates
+            // Only auto-scroll if user is near the bottom
+            if (chatWindow.scrollHeight - chatWindow.scrollTop - chatWindow.clientHeight < 100) {
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            }
+            return messageDiv;
         }
 
-        // --- Helper: Show Download Link ---
-        function showDownloadLink(url, filename) {
-            downloadArea.innerHTML = ''; // Clear old links
-            const link = document.createElement('a');
-            link.id = 'download-link';
-            link.href = url;
-            link.textContent = `⬇️ Download ${filename || 'generated file'}`;
-            link.target = '_blank';
-            downloadArea.appendChild(link);
-        }
-
-        // --- Helper: Update Staged File UI ---
         function updateStagedFileUI(file) {
             stagedFile = file;
             if (file) {
@@ -418,139 +931,470 @@
                 stagedFileDisplay.style.display = 'none';
             }
         }
+        
+        function setControlsDisabled(disabled) {
+            userInput.disabled = disabled;
+            sendButton.disabled = disabled;
+            micButton.disabled = disabled;
+            menuButton.disabled = disabled;
+            newChatButton.disabled = disabled;
+        }
+        
+        function toggleMenu() {
+            mediaMenu.style.display = mediaMenu.style.display === 'flex' ? 'none' : 'flex';
+        }
 
-        // --- 1. Connect to Gradio ---
-        async function connectClient() {
-            try {
-                // FIX: Removed LATEST_VERSION reference
-                console.log(`Connecting to ${SPACE_ID} with client...`); 
-                client = await Client.connect(SPACE_ID);
-                console.log("Gradio Client Connected!");
-                
-                chatWindow.innerHTML = ''; // Clear "Connecting..."
-                addMessage("✅ Connection successful. Hello! I'm Luna.", 'ai');
-                userInput.disabled = false;
-                sendButton.disabled = false;
-                micButton.disabled = false;
-                menuButton.disabled = false;
-            } catch (e) {
-                console.error("Failed to connect to Gradio Client:", e);
-                addMessage(`❌ Error: Could not connect. Is the Space running? ${e.message}`, 'ai');
+        // --- Firebase Firestore Handlers ---
+        
+        // --- Quota Handlers (Point 4) ---
+        function getQuotaDocRef() {
+            return doc(db, `artifacts/${appId}/users/${userId}/metadata/quotas`);
+        }
+
+        function subscribeToQuota() {
+            if (quotaUnsubscribe) quotaUnsubscribe();
+            const quotaRef = getQuotaDocRef();
+            quotaUnsubscribe = onSnapshot(quotaRef, async (doc) => {
+                if (doc.exists()) {
+                    userQuota = { limit: 5000, ...doc.data() };
+                } else {
+                    // First time, create the quota doc
+                    await setDoc(quotaRef, { messageCount: 0 });
+                    userQuota = { messageCount: 0, limit: 5000 };
+                }
+                updateQuotaUI();
+            });
+        }
+        
+        function updateQuotaUI() {
+            const percent = (userQuota.messageCount / userQuota.limit) * 100;
+            quotaBarFill.style.width = `${Math.min(percent, 100)}%`;
+            quotaText.textContent = `Quota: ${userQuota.messageCount} / ${userQuota.limit}`;
+            if (percent >= 100) {
+                quotaBarFill.style.background = "#e74c3c"; // Red when full
+            } else {
+                quotaBarFill.style.background = "var(--user-msg-bg)";
             }
         }
 
-        // --- 2. Main Chat Logic (Text + File/Image Sending) ---
-        async function sendMessage() {
-            const userMessage = userInput.value.trim();
-            if ((!userMessage && !stagedFile) || !client || userInput.disabled) return;
+        // --- Conversation Handlers ---
+        function getConversationCollectionRef() {
+            return collection(db, `artifacts/${appId}/users/${userId}/conversations`);
+        }
+        
+        function getMessagesCollectionRef(convId) {
+            return collection(db, `artifacts/${appId}/users/${userId}/conversations/${convId}/messages`);
+        }
+        
+        async function createNewConversation() {
+            if (!userId) return; 
+            setControlsDisabled(true);
+            try {
+                const docRef = await addDoc(getConversationCollectionRef(), {
+                    title: 'New Chat',
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                });
+                switchToConversation(docRef.id);
+            } catch (e) {
+                console.error("Error creating new conversation:", e);
+                alertMessage("Could not start a new chat.", "Error");
+            }
+        }
 
-            // Add user message to UI
-            if (userMessage) {
-                addMessage(userMessage, 'user');
-            } else if (stagedFile) {
-                addMessage(`(Sent file: ${stagedFile.name})`, 'user');
+        function subscribeToConversations() {
+            if (!userId) return;
+            if (conversationUnsubscribe) conversationUnsubscribe();
+
+            const convQuery = query(getConversationCollectionRef());
+
+            conversationUnsubscribe = onSnapshot(convQuery, (snapshot) => {
+                const convs = [];
+                snapshot.forEach(doc => {
+                    convs.push({ id: doc.id, ...doc.data() });
+                });
+
+                // --- FIX: Added check for null/undefined updatedAt ---
+                convs.sort((a, b) => {
+                    const timeA = a.updatedAt?.toMillis() || 0;
+                    const timeB = b.updatedAt?.toMillis() || 0;
+                    return timeB - timeA;
+                });
+                renderConversationList(convs);
+
+                if (!activeConversationId && convs.length > 0) {
+                    switchToConversation(convs[0].id);
+                } else if (activeConversationId && !convs.some(c => c.id === activeConversationId)) {
+                    switchToConversation(convs.length > 0 ? convs[0].id : null);
+                } else if (convs.length === 0) {
+                    createNewConversation(); // Auto-create first chat
+                }
+            }, (error) => {
+                console.error("Error subscribing to conversations:", error);
+                alertMessage("Error loading conversations.", "Error");
+            });
+        }
+        
+        function renderConversationList(convs) {
+            conversationList.innerHTML = '';
+            if (convs.length === 0) {
+                conversationList.innerHTML = '<div style="padding: 16px; color: var(--text-secondary);">No conversations.</div>';
+            }
+            convs.forEach(conv => {
+                const item = document.createElement('div');
+                item.classList.add('convo-item');
+                if (conv.id === activeConversationId) {
+                    item.classList.add('active');
+                    chatHeaderTitle.textContent = conv.title || "New Chat";
+                }
+                const title = conv.title || "New Chat";
+                item.dataset.convId = conv.id;
+                
+                item.innerHTML = `
+                    <div class="convo-item-title">${title}</div>
+                    <div class="convo-item-actions">
+                        <button class="convo-btn rename-btn" data-conv-id="${conv.id}" title="Rename">✏️</button>
+                        <button class="convo-btn delete-btn" data-conv-id="${conv.id}" title="Delete">🗑️</button>
+                    </div>
+                `;
+                conversationList.appendChild(item);
+            });
+        }
+        
+        // --- Rename/Delete Handlers (Point 3) ---
+        function handleRename(renameBtn) {
+            const convId = renameBtn.dataset.convId;
+            const convoItem = renameBtn.closest('.convo-item');
+            const titleEl = convoItem.querySelector('.convo-item-title');
+            const oldTitle = titleEl.textContent;
+            
+            titleEl.innerHTML = `<input type="text" class="rename-input" value="${oldTitle}">`;
+            const input = titleEl.querySelector('input');
+            input.focus();
+            input.select();
+
+            const saveRename = async () => {
+                const newTitle = input.value.trim();
+                if (newTitle && newTitle !== oldTitle) {
+                    try {
+                        await updateDoc(doc(getConversationCollectionRef(), convId), { title: newTitle });
+                        if(convId === activeConversationId) {
+                            chatHeaderTitle.textContent = newTitle;
+                        }
+                    } catch (e) {
+                        console.error("Error renaming:", e);
+                        alertMessage("Could not rename chat.", "Error");
+                    }
+                }
+                // onSnapshot re-renders
+            };
+            
+            input.onblur = saveRename;
+            input.onkeydown = (e) => {
+                if (e.key === 'Enter') input.blur();
+                if (e.key === 'Escape') {
+                    // Restore original text manually before blur
+                    input.onblur = null; // Prevent save on blur
+                    titleEl.textContent = oldTitle; 
+                }
+            };
+        }
+
+        function handleDelete(deleteBtn) {
+            const convId = deleteBtn.dataset.convId;
+            alertMessage(
+                "Are you sure you want to delete this conversation and all its messages? This cannot be undone.", 
+                "Delete Conversation?",
+                true, // showCancel = true
+                () => deleteConversation(convId) // onConfirm callback
+            );
+        }
+
+        async function deleteConversation(convId) {
+            setControlsDisabled(true);
+            try {
+                const msgCollectionRef = getMessagesCollectionRef(convId);
+                const msgSnapshot = await getDocs(msgCollectionRef);
+                
+                let deleteCount = 0;
+                const batch = writeBatch(db);
+                msgSnapshot.forEach(doc => {
+                    batch.delete(doc.ref);
+                    deleteCount++;
+                });
+                await batch.commit(); // Delete all messages
+
+                // Delete the main conversation doc
+                await deleteDoc(doc(getConversationCollectionRef(), convId));
+                
+                // Decrement quota (Point 4)
+                await updateDoc(getQuotaDocRef(), {
+                    messageCount: increment(-deleteCount)
+                });
+                
+                if (activeConversationId === convId) {
+                    activeConversationId = null; // Will auto-select another in subscribeToConversations
+                }
+                
+            } catch (e) {
+                console.error("Error deleting conversation:", e);
+                alertMessage("Could not delete conversation.", "Error");
+            } finally {
+                setControlsDisabled(false);
+            }
+        }
+
+
+        // --- Message & Conversation Logic ---
+        function switchToConversation(convId) {
+            if (messagesUnsubscribe) messagesUnsubscribe();
+            
+            activeConversationId = convId;
+            currentGradioHistory = []; // Reset local history cache
+            
+            // Update sidebar UI
+            document.querySelectorAll('.convo-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.convId === convId) {
+                    item.classList.add('active');
+                    chatHeaderTitle.textContent = item.querySelector('.convo-item-title').textContent;
+                }
+            });
+
+            chatWindow.innerHTML = '';
+            addMessage("Loading conversation...", 'ai');
+            
+            if (window.innerWidth <= 768) {
+                sidebar.classList.remove('open');
+                backdrop.classList.remove('open');
+            }
+
+            if (!convId) {
+                chatWindow.innerHTML = '';
+                addMessage("Select a conversation or start a new one.", 'ai');
+                setControlsDisabled(true);
+                return;
+            }
+
+            // Listen for new messages
+            const msgQuery = query(getMessagesCollectionRef(convId));
+            messagesUnsubscribe = onSnapshot(msgQuery, (snapshot) => {
+                const messages = [];
+                snapshot.forEach(doc => messages.push(doc.data()));
+                messages.sort((a, b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0));
+                renderMessages(messages); // This updates UI and currentGradioHistory
+            }, (error) => {
+                console.error("Error subscribing to messages:", error);
+                addMessage("❌ Error loading messages.", 'ai');
+            });
+        }
+        
+        function renderMessages(messages) {
+            chatWindow.innerHTML = '';
+            currentGradioHistory = []; // Reset local Gradio history cache
+            
+            if (messages.length === 0) {
+                addMessage("Hi! I am Luna. How can I help you?", 'ai');
+                setControlsDisabled(false);
+                return;
             }
             
-            // Prepare file path for API
+            messages.forEach(msg => {
+                const text = msg.content || (msg.imagePath ? `(Image: ${msg.imagePath.split('/').pop()})` : '');
+                addMessage(text, msg.role);
+                
+                // Rebuild the local Gradio history cache from Firestore data
+                if (msg.content) { // Only add messages with text content
+                    currentGradioHistory.push({ "role": msg.role, "content": msg.content });
+                }
+            });
+            setControlsDisabled(false);
+        }
+        
+        // Save message to Firestore
+        async function saveMessage(role, content, imagePath = null) {
+            if (!activeConversationId) return;
+
+            try {
+                // Add the new message
+                const msgRef = await addDoc(getMessagesCollectionRef(activeConversationId), {
+                    role,
+                    content,
+                    imagePath,
+                    timestamp: serverTimestamp()
+                });
+                
+                // Update conversation metadata
+                const convDocRef = doc(getConversationCollectionRef(), activeConversationId);
+                const currentTitle = chatHeaderTitle.textContent;
+                let newTitle = currentTitle;
+
+                // FIX (Point 2): Only update title if it's the default "New Chat" and this is the first user msg
+                const firstUserMessage = currentGradioHistory.filter(m => m.role === 'user').length === 0;
+                if (role === 'user' && currentTitle === 'New Chat' && content && firstUserMessage) {
+                     newTitle = content.substring(0, 40);
+                }
+                
+                await updateDoc(convDocRef, {
+                    updatedAt: serverTimestamp(),
+                    title: newTitle 
+                });
+                
+                // Update quota (Point 4) - Increment for both user and AI
+                await updateDoc(getQuotaDocRef(), {
+                    messageCount: increment(1)
+                });
+
+            } catch (e) {
+                console.error("Error saving message to Firestore:", e);
+            }
+        }
+
+        // --- Gradio Connection & Chat API ---
+
+        async function connectGradioClient() {
+            try {
+                client = await Client.connect(SPACE_ID);
+                console.log("Gradio Client Connected!");
+                if (!activeConversationId) {
+                    createNewConversation();
+                } else {
+                    setControlsDisabled(false); 
+                }
+            } catch (e) {
+                console.error("Failed to connect to Gradio Client:", e);
+                addMessage(`❌ Error: Could not connect to Gradio backend. ${e.message}`, 'ai');
+                setControlsDisabled(true);
+            }
+        }
+
+        async function sendMessage() {
+            // Check Quota (Point 4)
+            if (userQuota.messageCount >= userQuota.limit) {
+                alertMessage("You have reached your message quota. Please delete old conversations to send new messages.", "Quota Limit Reached");
+                return;
+            }
+            
+            const userMessage = userInput.value.trim();
+            if (!activeConversationId || ((!userMessage && !stagedFile) || !client)) return;
+
+            const fileToUpload = stagedFile; 
+            updateStagedFileUI(null);        
+
+            const userDisplayMessage = userMessage || (fileToUpload ? `(Image: ${fileToUpload.name})` : '');
+            addMessage(userDisplayMessage, 'user'); // Optimistic UI update
+            userInput.value = '';
+            setControlsDisabled(true);
+            downloadArea.innerHTML = '';
+            
             let image_path_or_null = null;
-            if (stagedFile) {
+            if (fileToUpload) {
                 try {
-                    // Upload the file and get its server path
-                    const uploadedFile = await client.upload(stagedFile);
+                    const uploadedFile = await client.upload(fileToUpload);
                     image_path_or_null = uploadedFile.path;
                 } catch (e) {
-                    addMessage(`❌ File upload failed: ${e.message}`, 'ai');
+                    addMessage(`❌ File upload failed during API transfer: ${e.message}.`, 'ai');
+                    setControlsDisabled(false);
                     return;
                 }
             }
             
-            const historyForGenerator = [...chatHistory, 
-                {"role": "user", "content": userMessage || `(Analyzing file: ${stagedFile.name})`},
-                {"role": "assistant", "content": ""}
+            // --- FIX (Point 1): Save user message FIRST ---
+            await saveMessage('user', userMessage, image_path_or_null);
+
+            // Build history for Gradio API call using the *local* cache
+            // which should have been updated by onSnapshot triggered by saveMessage('user',...)
+            // If not, the safeguard remains.
+            const historyForGradio = [
+                ...currentGradioHistory, // Use the local cache
+                { "role": "assistant", "content": "" } // Add placeholder
             ];
             
-            // [txt, staged_image, chatbot, stop_signal, is_voice_chat]
+            // Safeguard (unlikely needed now, but safe)
+            if (historyForGradio.length === 0 || historyForGradio[historyForGradio.length - 2]?.role !== 'user') {
+                 historyForGradio.splice(historyForGradio.length - 1, 0, { "role": "user", "content": userMessage });
+                 console.warn("Had to manually inject user message for Gradio history - onSnapshot might be slow.");
+            }
+            
             const inputsArray = [
                 userMessage,        
                 image_path_or_null, 
-                historyForGenerator,
+                historyForGradio, // Use the prepared history
                 false,              
                 isVoiceChat         
             ];
 
-            // Disable UI
-            userInput.value = '';
-            userInput.disabled = true;
-            sendButton.disabled = true;
-            micButton.disabled = true;
-            updateStagedFileUI(null); // Clear staged file
-            downloadArea.innerHTML = ''; // Clear old downloads
-
-            const aiStreamContainer = addMessage("...", 'ai'); 
+            const aiStreamContainer = addMessage("Generating response...", 'ai'); 
+            let finalAiResponse = ""; // Default to empty string
             
             try {
                 const job = client.submit(CHAT_GENERATOR_ENDPOINT, inputsArray);
-                let finalHistory = [];
-                let audioOutputPath = null;
-                let generatedFile = null;
 
                 for await (const event of job) {
                     
                     if (event.type === "data") {
-                        // event.data is the list of 11 outputs
                         const latestHistory = event.data[0];
                         const currentAiResponseObject = latestHistory[latestHistory.length - 1];
-                        aiStreamContainer.textContent = currentAiResponseObject.content; 
+                        finalAiResponse = currentAiResponseObject.content;
+                        aiStreamContainer.textContent = finalAiResponse; 
                         chatWindow.scrollTop = chatWindow.scrollHeight;
                     }
 
                     if (event.type === "complete") {
-                        finalHistory = event.data[0]; 
-                        audioOutputPath = event.data[5];
-                        generatedFile = event.data[10];
-                        chatHistory = finalHistory; // Save final history
+                        const audioOutputPath = event.data[5];
+                        const generatedFile = event.data[10];
+
+                        if (isVoiceChat && audioOutputPath) {
+                            audioPlayer.src = audioOutputPath.url;
+                            audioPlayer.play();
+                        }
+                        if (generatedFile) {
+                            const link = document.createElement('a');
+                            link.id = 'download-link';
+                            link.href = generatedFile.url;
+                            link.textContent = `⬇️ Download ${generatedFile.orig_name || 'generated file'}`;
+                            link.target = '_blank';
+                            downloadArea.innerHTML = '';
+                            downloadArea.appendChild(link);
+                        }
                     }
 
                     if (event.type === "error") {
                         throw new Error(event.message);
                     }
                 }
-
-                // --- Handle Audio and File Outputs ---
-                if (isVoiceChat && audioOutputPath) {
-                    // The client gives a full URL
-                    audioPlayer.src = audioOutputPath.url;
-                    audioPlayer.play();
-                }
-                if (generatedFile) {
-                    showDownloadLink(generatedFile.url, generatedFile.orig_name);
+                
+                // --- FIX (Point 1): Save AI response to Firestore ---
+                if (finalAiResponse && finalAiResponse.trim().length > 0) {
+                    await saveMessage('ai', finalAiResponse);
+                } else {
+                    // If AI response was empty, remove the "Generating..." placeholder
+                    if (aiStreamContainer) aiStreamContainer.closest('.message-container').remove();
                 }
 
             } catch (error) {
                 console.error("Chat streaming failed:", error);
                 aiStreamContainer.textContent = `❌ Error: ${error.message}`;
+                // Attempt to save error message if AI response failed
+                await saveMessage('ai', `❌ Error: ${error.message}`); 
             } finally {
-                // Re-enable UI (This fixes the "one-time message" bug)
-                userInput.disabled = false;
-                sendButton.disabled = false;
-                micButton.disabled = false;
-                isVoiceChat = false; // Reset voice chat state
+                setControlsDisabled(false);
+                isVoiceChat = false; 
             }
         }
-
-        // --- 3. Microphone Logic ---
+        
+        // --- Microphone Logic ---
         async function toggleRecording() {
+             if (userQuota.messageCount >= userQuota.limit) { // Quota Check
+                alertMessage("Quota limit reached. Cannot record audio.", "Quota Limit");
+                return;
+            }
             if (isRecording) {
-                // --- STOP RECORDING ---
                 mediaRecorder.stop();
                 isRecording = false;
                 micButton.classList.remove("recording");
                 micButton.title = "Record audio";
-                micButton.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>`;
-                userInput.disabled = false;
-                sendButton.disabled = false;
             } else {
-                // --- START RECORDING ---
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     audioChunks = [];
@@ -568,19 +1412,17 @@
                     isRecording = true;
                     micButton.classList.add("recording");
                     micButton.title = "Stop recording";
-                    micButton.innerHTML = `<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>`; // Stop icon
-                    userInput.disabled = true;
-                    sendButton.disabled = true;
 
                 } catch (e) {
-                    addMessage(`❌ Mic Error: ${e.message}. Please grant permission.`, 'ai');
+                    alertMessage(`Mic Error: ${e.message}. Please grant permission.`, 'Permission Required');
                 }
             }
         }
 
         async function transcribeAndSend(audioFile) {
             addMessage("(Transcribing audio...)", 'ai');
-            isVoiceChat = true; // Set flag so we play the response
+            isVoiceChat = true;
+            setControlsDisabled(true);
             
             try {
                 const result = await client.predict(TRANSCRIBE_AUDIO_ENDPOINT, [audioFile]);
@@ -588,45 +1430,39 @@
                 
                 if (transcribed_text) {
                     userInput.value = transcribed_text;
-                    sendMessage(); // Automatically send the text
+                    sendMessage();
                 } else {
                     addMessage("❌ Transcription failed. Couldn't hear anything.", 'ai');
+                    setControlsDisabled(false);
                     isVoiceChat = false;
                 }
             } catch (e) {
                 addMessage(`❌ Transcription Error: ${e.message}`, 'ai');
+                setControlsDisabled(false);
                 isVoiceChat = false;
             }
         }
         
-        // --- 4. Camera & File Menu Logic ---
-        function toggleMenu() {
-            mediaMenu.style.display = mediaMenu.style.display === 'flex' ? 'none' : 'flex';
-        }
-        
-        uploadFileButton.addEventListener('click', () => fileUploader.click());
-        fileUploader.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                updateStagedFileUI(e.target.files[0]);
-                toggleMenu(); // Close menu
-            }
-        });
-        
-        clearStagedButton.addEventListener('click', () => updateStagedFileUI(null));
-
-        // --- 5. Camera Modal Logic ---
+        // --- Camera Logic ---
         async function showCameraModal() {
+             if (userQuota.messageCount >= userQuota.limit) { // Quota Check
+                alertMessage("Quota limit reached. Cannot use camera.", "Quota Limit");
+                return;
+            }
             try {
+                const cameraModal = document.getElementById('camera-modal');
+                const cameraFeed = document.getElementById('camera-feed');
                 cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 cameraFeed.srcObject = cameraStream;
                 cameraModal.style.display = 'flex';
-                toggleMenu(); // Close menu
+                toggleMenu(); 
             } catch (e) {
-                addMessage(`❌ Camera Error: ${e.message}. Please grant permission.`, 'ai');
+                alertMessage(`Camera Error: ${e.message}. Please grant permission.`, 'Permission Required');
             }
         }
 
         function hideCameraModal() {
+            const cameraModal = document.getElementById('camera-modal');
             if (cameraStream) {
                 cameraStream.getTracks().forEach(track => track.stop());
             }
@@ -634,6 +1470,8 @@
         }
 
         function snapPhoto() {
+            const cameraCanvas = document.getElementById('camera-canvas');
+            const cameraFeed = document.getElementById('camera-feed');
             const context = cameraCanvas.getContext('2d');
             cameraCanvas.width = cameraFeed.videoWidth;
             cameraCanvas.height = cameraFeed.videoHeight;
@@ -646,23 +1484,9 @@
             }, 'image/png');
         }
 
-        // --- Event Listeners ---
-        sendButton.addEventListener('click', sendMessage);
-        userInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault(); // Prevent newline in textarea
-                sendMessage();
-            }
-        });
-        
-        micButton.addEventListener('click', toggleRecording);
-        menuButton.addEventListener('click', toggleMenu);
-        takeButton.addEventListener('click', showCameraModal);
-        snapButton.addEventListener('click', snapPhoto);
-        closeCameraButton.addEventListener('click', hideCameraModal);
-        
         // --- Start Application ---
-        connectClient();
+        window.onload = firebaseInit;
     </script>
 </body>
 </html>
+
