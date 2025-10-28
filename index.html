@@ -33,15 +33,15 @@
 
     <style>
         :root {
-            --dark-bg-start: #0f0c29; /* Deep Purple */
-            --dark-bg-mid: #302b63;   /* Mid Purple */
-            --dark-bg-end: #24243e;   /* Darker Purple */
+            --dark-bg-start: #242326; /* Deep Purple */
+            --dark-bg-mid: #242326;   /* Mid Purple */
+            --dark-bg-end: #242326;   /* Darker Purple */
             --text-primary: #f0f0f0;
             --text-secondary: #a0a0c0;
-            --ai-msg-bg: #2c3e50;
+            --ai-msg-bg: linear-gradient(to left, #6a11cb, #2575fc);
             --user-msg-bg: linear-gradient(to right, #6a11cb, #2575fc);
-            --accent-color: #8e44ad;
-            --accent-hover: #9b59b6;
+            --accent-color: #781fed;
+            --accent-hover: white;
             --border-color: #4a4a6a;
             --sidebar-width: 280px;
         }
@@ -399,6 +399,7 @@
             justify-content: center;
             align-items: center;
             cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
             transition: background-color 0.2s, transform 0.2s;
         }
         .icon-button svg { width: 20px; height: 20px; fill: white; }
