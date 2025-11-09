@@ -1,6 +1,6 @@
 {
-  "name": "Prototype",
-  "short_name": "Mark-1",
+  "name": "Luna",
+  "short_name": "Luna",
   "description": "Hope is Everything",
   "icons": [
     {
@@ -27,5 +27,5 @@
   "start_url": "index.html",
   "background_color": "#ffffff",
   "display": "standalone",
-  "theme_color": "#007991"
+  "theme_color": "#0b011a"
 }
