@@ -6,7 +6,7 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/Fevicon/favicon-16x16.png">
     <link rel="manifest" href="manifest.json">
     <link rel="manifest" href="/Fevicon/site.webmanifest">
-   
+  
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Luna</title>
@@ -36,7 +36,7 @@
         #main-content{flex:1;display:flex;flex-direction:column;position:relative;margin-left:280px;transition:margin-left .25s;}
         #sidebar.closed ~ #main-content{margin-left:0;}
         #chat-header{padding:14px;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;gap:12px}
-        #chat-window{flex:1;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+        #chat-window{flex:1;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:12px; scroll-behavior: auto;}
 
         .message-container{display:flex;width:100%}
         .ai-message-container{justify-content:flex-start}
@@ -240,6 +240,9 @@
         let currentAiDocRef = null;
         let streamingTimeoutId = null;
 
+        // Message DOM cache to avoid full re-renders (prevents jumpy scroll during streaming)
+        let msgMap = new Map(); // msgId -> element
+
         // DOM refs
         const sidebar = document.getElementById('sidebar');
         const chatWindow = document.getElementById('chat-window');
@@ -267,44 +270,38 @@
         const authActionBtn = document.getElementById('auth-action');
         const authError = document.getElementById('auth-error');
 
-        // --- Utility for message rendering ---
-        // Render a single message text, supporting fenced code blocks (```lang\ncode```)
-        function renderMessageElement(text, sender){
-            const container = document.createElement('div');
-            container.className = 'message-container ' + (sender==='user' ? 'user-message-container' : 'ai-message-container');
-            const m = document.createElement('div'); m.className = 'message ' + (sender==='user' ? 'user-message' : 'ai-message');
+        // --- Helpers to render/refresh single message content (supports code blocks + copy) ---
+        function setMessageContent(messageDiv, text) {
+            // messageDiv is the inner .message element
+            messageDiv.innerHTML = ''; // clear previous contents
 
-            // If text contains fenced code blocks, split and render parts
-            if (typeof text === 'string' && text.includes('```')){
-                // Split on triple backticks - parts[0] = before, parts[1] = code, parts[2]=after, ...
+            if (typeof text === 'string' && text.includes('```')) {
                 const parts = text.split(/```/);
-                for (let i = 0; i < parts.length; i++){
+                for (let i = 0; i < parts.length; i++) {
                     const part = parts[i];
-                    if (i % 2 === 0){
-                        // normal text
-                        if (part && part.length){
+                    if (i % 2 === 0) {
+                        if (part && part.length) {
                             const span = document.createElement('div');
                             span.textContent = part;
-                            m.appendChild(span);
+                            messageDiv.appendChild(span);
                         }
                     } else {
-                        // code block part - may start with language indicator like "js\n..."
                         let code = part;
                         let lang = '';
                         const lines = part.split('\n');
-                        if (lines.length > 1 && /^[a-zA-Z0-9\-+_]+$/.test(lines[0].trim())){
+                        if (lines.length > 1 && /^[a-zA-Z0-9\-+_]+$/.test(lines[0].trim())) {
                             lang = lines[0].trim();
                             code = lines.slice(1).join('\n');
                         }
                         const wrapper = document.createElement('div');
                         wrapper.className = 'code-block';
-                        if (lang){
+                        if (lang) {
                             const langTag = document.createElement('span');
                             langTag.className = 'code-lang';
                             langTag.textContent = lang;
                             wrapper.appendChild(langTag);
                         }
-                        // Copy button
+
                         const copyBtn = document.createElement('button');
                         copyBtn.className = 'copy-btn';
                         copyBtn.type = 'button';
@@ -329,32 +326,46 @@
                         codeNode.textContent = code;
                         codeEl.appendChild(codeNode);
                         wrapper.appendChild(codeEl);
-                        m.appendChild(wrapper);
+                        messageDiv.appendChild(wrapper);
                     }
                 }
             } else {
-                // No fenced code block - render as plain text
-                m.textContent = text;
+                // plain text
+                messageDiv.textContent = text;
             }
+        }
 
+        function renderMessageContainer(docId, data) {
+            const container = document.createElement('div');
+            container.className = 'message-container ' + (data.sender === 'user' ? 'user-message-container' : 'ai-message-container');
+            container.dataset.msgId = docId;
+
+            const m = document.createElement('div');
+            m.className = 'message ' + (data.sender === 'user' ? 'user-message' : 'ai-message');
+
+            setMessageContent(m, data.text || '');
             container.appendChild(m);
             return container;
         }
 
-        function addMessageToWindow(text, sender = 'ai'){
-            const el = renderMessageElement(text, sender);
+        // --- Utility for initial add message (no full snapshot) ---
+        function addMessageToWindow(text, sender = 'ai') {
+            const tempId = 'tmp-' + Math.random().toString(36).slice(2);
+            const el = renderMessageContainer(tempId, { sender, text });
+            // temp messages are not kept in msgMap
             chatWindow.appendChild(el);
             if (chatWindow.scrollHeight - chatWindow.scrollTop - chatWindow.clientHeight < 150) chatWindow.scrollTop = chatWindow.scrollHeight;
             return el;
         }
 
-        function clearMessages(){
+        function clearMessages() {
             chatWindow.innerHTML = '';
+            msgMap.clear();
         }
 
         // Replace send button with stop button and vice-versa
-        function setSendingState(sending){
-            if (sending){
+        function setSendingState(sending) {
+            if (sending) {
                 sendButton.classList.add('stop');
                 sendButton.title = 'Stop response';
                 sendButton.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="6" y="6" width="12" height="12" fill="white"/></svg>';
@@ -486,6 +497,8 @@
             chatHeaderTitle.innerText = `🌙 Luna - ${currentUser.displayName||currentUser.email} | ${convo?.name||'Untitled'}`;
             // detach previous listener
             if (messagesUnsub) { try { messagesUnsub(); } catch(e){} messagesUnsub = null; }
+            msgMap.clear();
+            clearMessages();
             await subscribeMessages(id);
             // close sidebar on selection
             sidebar.classList.add('closed');
@@ -494,23 +507,65 @@
 
         // Subscribe to messages and reflect streaming state to send button
         async function subscribeMessages(convoId){
-            clearMessages();
             const convoRef = db.collection('users').doc(currentUser.uid).collection('convos').doc(convoId);
+
             messagesUnsub = convoRef.collection('messages').orderBy('timestamp').onSnapshot(snapshot=>{
-                clearMessages();
-                if (snapshot.empty){
-                    addMessageToWindow('Start chatting!','ai');
-                    setSendingState(false);
-                    return;
-                }
-                let anyStreaming = false;
-                snapshot.forEach(doc=>{
+                // Preserve scroll behavior:
+                const prevScrollTop = chatWindow.scrollTop;
+                const prevScrollHeight = chatWindow.scrollHeight;
+                const clientHeight = chatWindow.clientHeight;
+                const prevDistanceFromBottom = prevScrollHeight - prevScrollTop - clientHeight;
+                const isNearBottom = prevDistanceFromBottom < 150;
+
+                // Build fragment in the order of docs while reusing existing DOM nodes where possible
+                const fragment = document.createDocumentFragment();
+                const seen = new Set();
+
+                snapshot.docs.forEach(doc => {
+                    const id = doc.id;
                     const data = doc.data();
-                    if (data.streaming) anyStreaming = true;
-                    addMessageToWindow(data.text || '', data.sender === 'user' ? 'user' : 'ai');
+                    seen.add(id);
+
+                    if (msgMap.has(id)) {
+                        const existing = msgMap.get(id);
+                        // update content if changed
+                        const messageDiv = existing.querySelector('.message');
+                        setMessageContent(messageDiv, data.text || '');
+                        fragment.appendChild(existing);
+                    } else {
+                        const el = renderMessageContainer(id, data);
+                        msgMap.set(id, el);
+                        fragment.appendChild(el);
+                    }
                 });
-                // If any message is flagged streaming, show stop state, otherwise show send
+
+                // Remove any DOM nodes that exist in msgMap but are not in snapshot (deleted)
+                for (const [mid, el] of msgMap.entries()) {
+                    if (!seen.has(mid)) {
+                        // remove from DOM if present and delete from map
+                        try { if (el.parentNode) el.parentNode.removeChild(el); } catch(e){}
+                        msgMap.delete(mid);
+                    }
+                }
+
+                // Replace chatWindow children with fragment (re-uses nodes from msgMap)
+                // Instead of innerHTML = '' (which would destroy nodes), we remove all and append fragment.
+                while (chatWindow.firstChild) chatWindow.removeChild(chatWindow.firstChild);
+                chatWindow.appendChild(fragment);
+
+                // Determine streaming state and update send/stop button
+                let anyStreaming = snapshot.docs.some(d => d.data().streaming === true);
                 setSendingState(anyStreaming);
+
+                // Restore scroll
+                if (isNearBottom) {
+                    chatWindow.scrollTop = chatWindow.scrollHeight; // scroll to bottom
+                } else {
+                    // Keep user's current view position stable by adjusting by difference in scrollHeight
+                    const newScrollHeight = chatWindow.scrollHeight;
+                    const delta = newScrollHeight - prevScrollHeight;
+                    chatWindow.scrollTop = Math.max(0, prevScrollTop + delta);
+                }
             }, err=>{
                 console.warn('Messages snapshot error', err);
             });
@@ -611,7 +666,6 @@
                     }catch(e){ console.warn('Failed to update ai doc on stop', e); }
                     currentAiDocRef = null;
                 }
-                // clear streaming timeout
                 if (streamingTimeoutId){ clearTimeout(streamingTimeoutId); streamingTimeoutId = null; }
                 setSendingState(false);
                 currentJob = null;
@@ -652,13 +706,11 @@
             if (streamingTimeoutId) clearTimeout(streamingTimeoutId);
             streamingTimeoutId = setTimeout(async ()=>{
                 try{
-                    // If still streaming in DB, clear it
                     await aiDocRef.update({streaming:false, lastUpdated: firebase.firestore.FieldValue.serverTimestamp()});
                 }catch(e){
                     // ignore
                 } finally {
                     streamingTimeoutId = null;
-                    // ensure UI resets
                     setSendingState(false);
                 }
             }, 5000);
